@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>نظام إدارة سيارات النقل</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;700;900&display=swap');
+        body { 
+            font-family: 'Noto Sans Arabic', sans-serif; 
+            background-color: #f8fafc;
+            -webkit-tap-highlight-color: transparent;
+        }
+        input[type="number"]::-webkit-inner-spin-button, 
+        input[type="number"]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        .loading-overlay { 
+            position: fixed; 
+            inset: 0; 
+            background: rgba(255,255,255,0.8); 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 9999; 
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 5px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        .row-not-received {
+            background-color: #be185d !important;
+        }
+        .text-custom-white {
+            color: inherit;
+        }
+        .row-not-received .text-custom-white {
+            color: white !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800">
+
+    <div id="loading-spinner" class="loading-overlay" style="display: none;">
+        <div class="animate-spin rounded-full h-12 w-12 border-4 border-pink-700 border-t-transparent"></div>
+    </div>
+
+    <div id="app"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import React, { useState, useEffect, useMemo, useRef } from 'https://esm.sh/react@18.2.0';
+        import { createRoot } from 'https://esm.sh/react-dom@18.2.0/client';
+        import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+        
+        import { 
+            Plus, Trash2, Edit, Settings, X, Lock, Filter, LogOut, Ban, Save, AlertTriangle, Database, CheckCircle2, Wifi, WifiOff, Image as ImageIcon, Upload
+        } from 'https://esm.sh/lucide-react@0.300.0';
+
+        const getSupabase = (url, key) => {
+            if (url && key && url.startsWith('http')) {
+                return createClient(url, key);
+            }
+            return null;
+        };
+
+        function App() {
+            const [isAppLoggedIn, setIsAppLoggedIn] = useState(false);
+            const [loginCredentials, setLoginCredentials] = useState({ username: '', password: '' });
+            const [loginError, setLoginError] = useState('');
+            
+            const [appSettings, setAppSettings] = useState(() => {
+                const saved = localStorage.getItem('app_settings');
+                return saved ? JSON.parse(saved) : {
+                    currency: 'د.ع',
+                    username: 'admin',
+                    password: '123',
+                    app_name: 'نظام إدارة سيارات النقل',
+                    sb_url: '',
+                    sb_key: ''
+                };
+            });
+
+            const [tempSettings, setTempSettings] = useState(appSettings);
+
+            const [entries, setEntries] = useState(() => {
+                const saved = localStorage.getItem('expenses_data');
+                return saved ? JSON.parse(saved) : [];
+            });
+
+            const [supabase, setSupabase] = useState(null);
+            const [isOnline, setIsOnline] = useState(false);
+
+            const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [isSaving, setIsSaving] = useState(false);
+            const [deleteModal, setDeleteModal] = useState({ show: false, id: null });
+            const [alertInfo, setAlertInfo] = useState({ show: false, message: '', available: 0, requested: 0 });
+
+            const [startDate, setStartDate] = useState('');
+            const [endDate, setEndDate] = useState('');
+
+            const [formData, setFormData] = useState({
+                date: new Date().toISOString().split('T')[0],
+                trip_from: '', trip_to: '', income: 0, 
+                driver_exp: 0, fuel_exp: 0, other_exp: 0, withdrawal: 0,
+                is_received: false
+            });
+
+            useEffect(() => {
+                const client = getSupabase(appSettings.sb_url, appSettings.sb_key);
+                setSupabase(client);
+                if (client) {
+                    setIsOnline(true);
+                    fetchCloudData(client);
+                } else {
+                    setIsOnline(false);
+                }
+            }, [appSettings.sb_url, appSettings.sb_key]);
+
+            useEffect(() => {
+                localStorage.setItem('expenses_data', JSON.stringify(entries));
+            }, [entries]);
+
+            async function fetchCloudData(client) {
+                try {
+                    const { data, error } = await client.from('expenses').select('*').order('date', { ascending: false });
+                    if (!error && data) {
+                        setEntries(data);
+                    }
+                } catch (e) {
+                    console.error("Fetch Error", e);
+                }
+            }
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                if (loginCredentials.username === appSettings.username && loginCredentials.password === appSettings.password) {
+                    setIsAppLoggedIn(true);
+                } else {
+                    setLoginError('بيانات الدخول غير صحيحة');
+                }
+            };
+
+            const formatNumber = (n) => new Intl.NumberFormat('ar-IQ').format(n || 0);
+
+            const filteredEntries = useMemo(() => {
+                return entries.filter(entry => {
+                    if (startDate && entry.date < startDate) return false;
+                    if (endDate && entry.date > endDate) return false;
+                    return true;
+                });
+            }, [entries, startDate, endDate]);
+
+            const stats = useMemo(() => {
+                return filteredEntries.reduce((acc, i) => {
+                    const inc = Number(i.income) || 0;
+                    const ex = (Number(i.driver_exp) || 0) + (Number(i.fuel_exp) || 0) + (Number(i.other_exp) || 0);
+                    const w = Number(i.withdrawal) || 0;
+                    acc.totalIncome += inc;
+                    acc.totalExp += ex;
+                    acc.totalWithdrawals += w;
+                    if (i.is_received) acc.receivedIncome += inc;
+                    acc.netBalance = acc.receivedIncome - acc.totalExp - acc.totalWithdrawals;
+                    return acc;
+                }, { totalIncome: 0, totalExp: 0, totalWithdrawals: 0, netBalance: 0, receivedIncome: 0 });
+            }, [filteredEntries]);
+
+            const confirmDelete = async () => {
+                if (deleteModal.id) {
+                    const idToDelete = deleteModal.id;
+                    const newEntries = entries.filter(item => item.id !== idToDelete);
+                    setEntries(newEntries);
+                    
+                    if (supabase) {
+                        await supabase.from('expenses').delete().eq('id', idToDelete);
+                    }
+                    setDeleteModal({ show: false, id: null });
+                }
+            };
+
+            const toggleReceived = async (id) => {
+                const updatedEntries = entries.map(entry => 
+                    entry.id === id ? { ...entry, is_received: !entry.is_received } : entry
+                );
+                setEntries(updatedEntries);
+                
+                if (supabase) {
+                    const item = updatedEntries.find(e => e.id === id);
+                    await supabase.from('expenses').update({ is_received: item.is_received }).eq('id', id);
+                }
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                
+                const currentIncome = Number(formData.income) || 0;
+                const currentExpenses = (Number(formData.driver_exp) || 0) + (Number(formData.fuel_exp) || 0) + (Number(formData.other_exp) || 0);
+                const currentWithdrawal = Number(formData.withdrawal) || 0;
+
+                const otherEntries = editingId ? entries.filter(entry => entry.id !== editingId) : entries;
+                const totalBalance = otherEntries.reduce((acc, i) => {
+                    const inc = i.is_received ? (Number(i.income) || 0) : 0;
+                    const ex = (Number(i.driver_exp) || 0) + (Number(i.fuel_exp) || 0) + (Number(i.other_exp) || 0);
+                    const w = Number(i.withdrawal) || 0;
+                    return acc + (inc - ex - w);
+                }, 0);
+                
+                const currentTripNet = (formData.is_received ? currentIncome : 0) - currentExpenses;
+                const finalAvailable = totalBalance + currentTripNet;
+
+                if (currentWithdrawal > 0 && currentWithdrawal > finalAvailable) {
+                    setAlertInfo({ 
+                        show: true, 
+                        message: 'لا يمكن إتمام العملية. مبلغ السحب أكبر من الرصيد المتوفر في الصندوق.',
+                        available: finalAvailable,
+                        requested: currentWithdrawal
+                    });
+                    return;
+                }
+
+                setIsSaving(true);
+                const dataToSave = {
+                    ...formData,
+                    income: currentIncome,
+                    driver_exp: Number(formData.driver_exp),
+                    fuel_exp: Number(formData.fuel_exp),
+                    other_exp: Number(formData.other_exp),
+                    withdrawal: currentWithdrawal
+                };
+
+                if (editingId) {
+                    const updated = { ...dataToSave, id: editingId };
+                    setEntries(prev => prev.map(i => i.id === editingId ? updated : i));
+                    if (supabase) await supabase.from('expenses').update(dataToSave).eq('id', editingId);
+                } else {
+                    const newItem = { ...dataToSave, id: Date.now() };
+                    setEntries(prev => [newItem, ...prev]);
+                    if (supabase) {
+                        const { id, ...cloudData } = newItem;
+                        await supabase.from('expenses').insert([cloudData]);
+                        fetchCloudData(supabase);
+                    }
+                }
+
+                setIsSaving(false);
+                setIsModalOpen(false);
+                setEditingId(null);
+            };
+
+            const saveSettings = async (e) => {
+                e.preventDefault();
+                
+                let cleanUrl = tempSettings.sb_url.trim();
+                if (cleanUrl && !cleanUrl.startsWith('http')) cleanUrl = `https://${cleanUrl}`;
+
+                const newSettings = {
+                    ...tempSettings,
+                    sb_url: cleanUrl
+                };
+
+                localStorage.setItem('app_settings', JSON.stringify(newSettings));
+                setAppSettings(newSettings);
+                
+                if (supabase) {
+                    try {
+                        await supabase.from('settings').upsert({ id: 'main', ...newSettings });
+                    } catch (e) { console.error("Cloud settings save error", e); }
+                }
+
+                setIsSettingsOpen(false);
+            };
+
+            if (!isAppLoggedIn) {
+                return React.createElement('div', { className: "min-h-screen bg-slate-100 flex items-center justify-center p-4" },
+                    React.createElement('div', { className: "bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200" },
+                        React.createElement('div', { className: "text-center mb-8" },
+                            React.createElement('div', { className: "w-16 h-16 bg-pink-700 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-lg" }, React.createElement(Lock, { className: "w-8 h-8" })),
+                            React.createElement('h1', { className: "text-2xl font-black text-slate-800" }, appSettings.app_name)
+                        ),
+                        React.createElement('form', { className: "space-y-4", onSubmit: handleLogin },
+                            React.createElement('input', { type: "text", placeholder: "اسم المستخدم", className: "w-full p-4 border rounded-xl outline-none focus:ring-2 focus:ring-pink-500 text-center", onChange: e => setLoginCredentials({...loginCredentials, username: e.target.value}) }),
+                            React.createElement('input', { type: "password", placeholder: "كلمة المرور", className: "w-full p-4 border rounded-xl outline-none focus:ring-2 focus:ring-pink-500 text-center", onChange: e => setLoginCredentials({...loginCredentials, password: e.target.value}) }),
+                            loginError && React.createElement('p', { className: "text-red-500 text-sm font-bold text-center" }, loginError),
+                            React.createElement('button', { className: "w-full bg-pink-700 text-white py-4 rounded-xl font-black text-lg hover:bg-pink-800 transition-all shadow-md" }, "دخول النظام")
+                        )
+                    )
+                );
+            }
+
+            return React.createElement('div', { className: "max-w-6xl mx-auto min-h-screen pb-20 px-4" },
+                React.createElement('header', { className: "sticky top-0 z-40 bg-white/90 backdrop-blur-sm border-b py-4 mb-6 flex justify-between items-center -mx-4 px-4 shadow-sm" },
+                    React.createElement('div', { className: "flex items-center gap-2" },
+                        React.createElement('div', { className: "w-8 h-8 bg-pink-700 rounded-lg flex items-center justify-center text-white font-bold" }, "V"),
+                        React.createElement('div', null, 
+                            React.createElement('h1', { className: "font-black text-slate-800" }, appSettings.app_name),
+                            React.createElement('span', { className: `text-[10px] flex items-center gap-1 ${isOnline ? 'text-emerald-600' : 'text-slate-400'}` }, 
+                                isOnline ? React.createElement(Wifi, {size: 10}) : React.createElement(WifiOff, {size: 10}),
+                                isOnline ? 'متصل سحابياً' : 'تخزين محلي'
+                            )
+                        )
+                    ),
+                    React.createElement('div', { className: "flex gap-2" },
+                        React.createElement('button', { onClick: () => { setFormData({ date: new Date().toISOString().split('T')[0], trip_from: '', trip_to: '', income: 0, driver_exp: 0, fuel_exp: 0, other_exp: 0, withdrawal: 0, is_received: false }); setEditingId(null); setIsModalOpen(true); }, className: "bg-pink-700 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-md hover:bg-pink-800 transition-all" }, React.createElement(Plus, { size: 18 }), "إضافة رحلة"),
+                        React.createElement('button', { onClick: () => { setTempSettings(appSettings); setIsSettingsOpen(true); }, className: "p-2 bg-slate-100 rounded-xl hover:bg-slate-200" }, React.createElement(Settings, { size: 20 })),
+                        React.createElement('button', { onClick: () => setIsAppLoggedIn(false), className: "p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100" }, React.createElement(LogOut, { size: 20 }))
+                    )
+                ),
+
+                React.createElement('div', { className: "grid grid-cols-2 md:grid-cols-4 gap-3 mb-8" },
+                    React.createElement(StatBox, { title: "صافي الصندوق", value: stats.netBalance, color: "text-emerald-700", bg: "bg-emerald-50", symbol: appSettings.currency }),
+                    React.createElement(StatBox, { title: "إجمالي الاستلام", value: stats.receivedIncome, color: "text-blue-700", bg: "bg-blue-50", symbol: appSettings.currency }),
+                    React.createElement(StatBox, { title: "إجمالي المصاريف", value: stats.totalExp, color: "text-red-700", bg: "bg-red-50", symbol: appSettings.currency }),
+                    React.createElement(StatBox, { title: "إجمالي السحوبات", value: stats.totalWithdrawals, color: "text-amber-700", bg: "bg-amber-50", symbol: appSettings.currency })
+                ),
+
+                React.createElement('div', { className: "bg-white rounded-2xl border shadow-sm overflow-hidden" },
+                    React.createElement('div', { className: "p-4 bg-slate-50 border-b flex flex-wrap items-end gap-4" },
+                        React.createElement('div', { className: "flex items-center gap-2 text-slate-500 font-bold text-sm" }, React.createElement(Filter, { size: 16 }), "تصفية:"),
+                        React.createElement('div', null,
+                            React.createElement('label', { className: "block text-xs font-bold text-slate-400 mb-1 text-center" }, "من تاريخ"),
+                            React.createElement('input', { type: "date", value: startDate, onChange: e => setStartDate(e.target.value), className: "p-2 border rounded-lg text-sm outline-none text-center" })
+                        ),
+                        React.createElement('div', null,
+                            React.createElement('label', { className: "block text-xs font-bold text-slate-400 mb-1 text-center" }, "إلى تاريخ"),
+                            React.createElement('input', { type: "date", value: endDate, onChange: e => setEndDate(e.target.value), className: "p-2 border rounded-lg text-sm outline-none text-center" })
+                        ),
+                        (startDate || endDate) && React.createElement('button', { onClick: () => { setStartDate(''); setEndDate(''); }, className: "px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200" }, "إلغاء")
+                    ),
+                    React.createElement('div', { className: "overflow-x-auto" },
+                        React.createElement('table', { className: "w-full text-right" },
+                            React.createElement('thead', null,
+                                React.createElement('tr', { className: "bg-slate-50 border-b" },
+                                    [
+                                        'التاريخ', 
+                                        'من ← إلى', 
+                                        `مبلغ الرحلة (${appSettings.currency})`, 
+                                        `المصاريف (${appSettings.currency})`, 
+                                        `السحب (${appSettings.currency})`, 
+                                        'الإجراءات'
+                                    ].map(h => React.createElement('th', { key: h, className: "p-4 text-xs font-black text-slate-500 text-center" }, h))
+                                )
+                            ),
+                            React.createElement('tbody', { className: "divide-y" },
+                                filteredEntries.length === 0 ? React.createElement('tr', null, React.createElement('td', { colSpan: 6, className: "p-10 text-center text-slate-400" }, "لا توجد بيانات حالياً")) :
+                                filteredEntries.map(item => React.createElement('tr', { key: item.id, className: `transition-colors ${!item.is_received ? 'row-not-received' : 'hover:bg-slate-50'}` },
+                                    React.createElement('td', { className: "p-4 text-sm font-bold text-slate-600 whitespace-nowrap text-custom-white text-center" }, item.date),
+                                    React.createElement('td', { className: "p-4 text-sm font-medium text-custom-white text-center" }, 
+                                        React.createElement('div', { className: "flex items-center justify-center gap-1" }, 
+                                            React.createElement('span', { className: !item.is_received ? 'text-white' : 'text-blue-700' }, item.trip_from),
+                                            React.createElement('span', { className: !item.is_received ? 'text-white/60' : 'text-slate-300' }, "←"),
+                                            React.createElement('span', { className: !item.is_received ? 'text-white' : 'text-slate-800' }, item.trip_to)
+                                        )
+                                    ),
+                                    React.createElement('td', { className: `p-4 font-black text-center ${item.is_received ? 'text-emerald-600' : 'text-white'}` }, formatNumber(item.income)),
+                                    React.createElement('td', { className: `p-4 text-sm font-bold text-center ${!item.is_received ? 'text-white' : 'text-red-500'}` }, formatNumber(Number(item.driver_exp) + Number(item.fuel_exp) + Number(item.other_exp))),
+                                    React.createElement('td', { className: `p-4 font-black text-center ${!item.is_received ? 'text-white' : 'text-amber-600'}` }, formatNumber(item.withdrawal)),
+                                    React.createElement('td', { className: "p-4" },
+                                        React.createElement('div', { className: "flex items-center justify-center gap-4" },
+                                            React.createElement('input', { type: "checkbox", checked: item.is_received || false, onChange: () => toggleReceived(item.id), className: "accent-emerald-600 w-4 h-4" }),
+                                            React.createElement('div', { className: "flex gap-1" },
+                                                React.createElement('button', { onClick: () => { setEditingId(item.id); setFormData(item); setIsModalOpen(true); }, className: `p-2 rounded-lg transition-colors ${!item.is_received ? 'text-white hover:bg-pink-800' : 'text-blue-600 hover:bg-blue-100'}` }, React.createElement(Edit, { size: 18 })),
+                                                React.createElement('button', { onClick: () => setDeleteModal({ show: true, id: item.id }), className: `p-2 rounded-lg transition-colors ${!item.is_received ? 'text-white hover:bg-pink-800' : 'text-red-600 hover:bg-red-100'}` }, React.createElement(Trash2, { size: 18 }))
+                                            )
+                                        )
+                                    )
+                                ))
+                            )
+                        )
+                    )
+                ),
+
+                isModalOpen && React.createElement('div', { className: "fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-hidden" },
+                    React.createElement('div', { className: "bg-white rounded-3xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]" },
+                        React.createElement('div', { className: "p-6 border-b flex justify-between items-center shrink-0" },
+                            React.createElement('h2', { className: "text-xl font-black" }, editingId ? 'تعديل الرحلة' : 'إضافة رحلة جديدة'),
+                            React.createElement('button', { onClick: () => setIsModalOpen(false), className: "p-2 hover:bg-slate-100 rounded-full" }, React.createElement(X))
+                        ),
+                        React.createElement('form', { onSubmit: handleSubmit, className: "p-6 overflow-y-auto custom-scrollbar flex-1 space-y-5" },
+                            React.createElement('div', { className: "grid grid-cols-2 gap-4" },
+                                React.createElement('div', null, React.createElement('label', { className: "text-[14px] font-black mb-1.5 block text-slate-500 text-center" }, "التاريخ"), React.createElement('input', { type: "date", required: true, className: "w-full p-3 bg-slate-100 rounded-xl text-center outline-none focus:ring-2 focus:ring-pink-500", value: formData.date, onChange: e => setFormData({...formData, date: e.target.value}) })),
+                                React.createElement('div', null, React.createElement('label', { className: "text-[14px] font-black mb-1.5 block text-blue-600 text-center" }, "مبلغ الرحلة الكلي"), React.createElement('input', { type: "number", className: "w-full p-3 bg-blue-50 rounded-xl font-bold text-center outline-none focus:ring-2 focus:ring-blue-500", value: formData.income, onChange: e => setFormData({...formData, income: e.target.value}) }))
+                            ),
+                            React.createElement('div', { className: "grid grid-cols-2 gap-4" },
+                                React.createElement('div', null, React.createElement('label', { className: "text-[12px] font-bold text-slate-400 block mb-1.5 text-center" }, "من"), React.createElement('input', { placeholder: "البصرة", className: "w-full p-3 bg-slate-100 rounded-xl text-center outline-none focus:ring-2 focus:ring-pink-500", value: formData.trip_from, onChange: e => setFormData({...formData, trip_from: e.target.value}) })),
+                                React.createElement('div', null, React.createElement('label', { className: "text-[12px] font-bold text-slate-400 block mb-1.5 text-center" }, "إلى"), React.createElement('input', { placeholder: "بغداد", className: "w-full p-3 bg-slate-100 rounded-xl text-center outline-none focus:ring-2 focus:ring-pink-500", value: formData.trip_to, onChange: e => setFormData({...formData, trip_to: e.target.value}) }))
+                            ),
+                            React.createElement('div', { className: "p-4 bg-red-50 rounded-2xl space-y-4 border border-red-100" },
+                                React.createElement('p', { className: "text-xs font-black text-red-600 uppercase tracking-wider text-center" }, "المصاريف التشغيلية"),
+                                React.createElement('div', { className: "grid grid-cols-3 gap-2" },
+                                    React.createElement('div', null, React.createElement('label', { className: "text-[11px] font-bold text-red-600 block mb-1.5 text-center" }, "أجرة السائق"), React.createElement('input', { type: "number", className: "w-full p-2.5 rounded-xl border border-red-200 text-center outline-none focus:ring-2 focus:ring-red-500", value: formData.driver_exp, onChange: e => setFormData({...formData, driver_exp: e.target.value}) })),
+                                    React.createElement('div', null, React.createElement('label', { className: "text-[11px] font-bold text-red-600 block mb-1.5 text-center" }, "الوقود والزيت"), React.createElement('input', { type: "number", className: "w-full p-2.5 rounded-xl border border-red-200 text-center outline-none focus:ring-2 focus:ring-red-500", value: formData.fuel_exp, onChange: e => setFormData({...formData, fuel_exp: e.target.value}) })),
+                                    React.createElement('div', null, React.createElement('label', { className: "text-[11px] font-bold text-red-600 block mb-1.5 text-center" }, "الصيانة وأخرى"), React.createElement('input', { type: "number", className: "w-full p-2.5 rounded-xl border border-red-200 text-center outline-none focus:ring-2 focus:ring-red-500", value: formData.other_exp, onChange: e => setFormData({...formData, other_exp: e.target.value}) }))
+                                )
+                            ),
+                            React.createElement('div', null, React.createElement('label', { className: "text-[14px] font-black text-amber-700 block mb-1.5 text-center" }, "مبلغ السحب"), React.createElement('input', { type: "number", className: "w-full p-3 bg-amber-50 rounded-xl font-bold text-center outline-none focus:ring-2 focus:ring-amber-500", value: formData.withdrawal, onChange: e => setFormData({...formData, withdrawal: e.target.value}) })),
+                            React.createElement('div', { className: "flex items-center justify-center gap-3 p-4 bg-emerald-50 rounded-2xl border border-emerald-100" },
+                                React.createElement('input', { type: "checkbox", id: "modal_check", className: "w-5 h-5 accent-emerald-600", checked: formData.is_received, onChange: e => setFormData({...formData, is_received: e.target.checked}) }),
+                                React.createElement('label', { htmlFor: "modal_check", className: "text-sm font-black text-emerald-800 cursor-pointer" }, "تأكيد استلام كامل مبلغ الرحلة")
+                            )
+                        ),
+                        React.createElement('div', { className: "p-6 border-t shrink-0 bg-slate-50 rounded-b-3xl" },
+                            React.createElement('div', { className: "flex gap-3" },
+                                React.createElement('button', { type: "button", onClick: () => setIsModalOpen(false), className: "flex-1 border p-4 rounded-xl font-bold bg-white hover:bg-slate-100 transition-colors" }, "إلغاء"),
+                                React.createElement('button', { onClick: handleSubmit, disabled: isSaving, className: "flex-[2] bg-pink-700 text-white p-4 rounded-xl font-black shadow-lg hover:bg-pink-800 transition-all active:scale-95" }, isSaving ? 'جاري الحفظ...' : 'حفظ البيانات')
+                            )
+                        )
+                    )
+                ),
+
+                isSettingsOpen && React.createElement('div', { className: "fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-hidden" },
+                    React.createElement('div', { className: "bg-white rounded-3xl w-full max-w-md shadow-2xl flex flex-col max-h-[90vh]" },
+                        React.createElement('div', { className: "p-6 border-b flex justify-between items-center shrink-0" },
+                            React.createElement('h2', { className: "text-lg font-black flex items-center gap-2" }, React.createElement(Settings, {size: 20}), "إعدادات النظام"),
+                            React.createElement('button', { onClick: () => setIsSettingsOpen(false), className: "p-2 hover:bg-slate-100 rounded-full" }, React.createElement(X))
+                        ),
+                        React.createElement('div', { className: "p-6 overflow-y-auto custom-scrollbar flex-1 space-y-5" },
+                            React.createElement('div', { className: "bg-blue-50 p-4 rounded-2xl border border-blue-100" },
+                                React.createElement('h3', { className: "text-xs font-black text-blue-800 mb-3 flex items-center gap-2" }, React.createElement(Database, {size: 14}), "بيانات السحابة (Supabase)"),
+                                React.createElement('div', { className: "space-y-3" },
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "text-[10px] font-bold text-blue-600 block mb-1 mr-1 text-center" }, "Project URL"),
+                                        React.createElement('input', { placeholder: "https://xyz.supabase.co", className: "w-full p-2.5 border rounded-xl text-xs text-center outline-none focus:ring-2 focus:ring-blue-500", value: tempSettings.sb_url || '', onChange: e => setTempSettings({...tempSettings, sb_url: e.target.value}) })
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "text-[10px] font-bold text-blue-600 block mb-1 mr-1 text-center" }, "Anon Key"),
+                                        React.createElement('input', { placeholder: "eyJhbG...", className: "w-full p-2.5 border rounded-xl text-xs text-center outline-none focus:ring-2 focus:ring-blue-500", value: tempSettings.sb_key || '', onChange: e => setTempSettings({...tempSettings, sb_key: e.target.value}) })
+                                    )
+                                )
+                            ),
+                            React.createElement('div', { className: "space-y-4" },
+                                React.createElement('div', null,
+                                    React.createElement('label', { className: "text-sm font-bold text-slate-700 mb-1.5 block text-center" }, "عنوان التطبيق"),
+                                    React.createElement('input', { className: "w-full p-3 border rounded-xl text-center font-bold outline-none focus:ring-2 focus:ring-pink-500", value: tempSettings.app_name, onChange: e => setTempSettings({...tempSettings, app_name: e.target.value}) })
+                                ),
+                                React.createElement('div', { className: "grid grid-cols-2 gap-3" },
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "text-sm font-bold text-slate-700 mb-1.5 block text-center" }, "اسم المستخدم"),
+                                        React.createElement('input', { className: "w-full p-3 border rounded-xl text-center outline-none focus:ring-2 focus:ring-pink-500", value: tempSettings.username, onChange: e => setTempSettings({...tempSettings, username: e.target.value}) })
+                                    ),
+                                    React.createElement('div', null,
+                                        React.createElement('label', { className: "text-sm font-bold text-slate-700 mb-1.5 block text-center" }, "كلمة السر"),
+                                        React.createElement('input', { type: "text", className: "w-full p-3 border rounded-xl text-center outline-none focus:ring-2 focus:ring-pink-500", value: tempSettings.password, onChange: e => setTempSettings({...tempSettings, password: e.target.value}) })
+                                    )
+                                ),
+                                React.createElement('div', null,
+                                    React.createElement('label', { className: "text-sm font-bold text-slate-700 mb-1.5 block text-center" }, "نوع العملة (مثال: د.ع)"),
+                                    React.createElement('input', { className: "w-full p-3 border rounded-xl font-bold text-center outline-none focus:ring-2 focus:ring-pink-500", value: tempSettings.currency, onChange: e => setTempSettings({...tempSettings, currency: e.target.value}) })
+                                )
+                            )
+                        ),
+                        React.createElement('div', { className: "p-6 border-t shrink-0 bg-slate-50 rounded-b-3xl" },
+                            React.createElement('div', { className: "flex gap-3" },
+                                React.createElement('button', { onClick: saveSettings, className: "flex-1 bg-blue-600 text-white p-4 rounded-xl font-bold shadow-md hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2" }, React.createElement(Save, {size: 18}), "حفظ التغييرات"),
+                                React.createElement('button', { onClick: () => setIsSettingsOpen(false), className: "px-6 p-4 bg-white border rounded-xl font-bold hover:bg-slate-100" }, "إلغاء")
+                            )
+                        )
+                    )
+                ),
+
+                deleteModal.show && React.createElement('div', { className: "fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]" },
+                    React.createElement('div', { className: "bg-white p-6 rounded-2xl shadow-xl max-w-sm w-full text-center" },
+                        React.createElement('div', { className: "w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600" }, React.createElement(Trash2, { size: 24 })),
+                        React.createElement('h3', { className: "font-bold text-lg mb-2 text-slate-800" }, "تأكيد حذف السجل"),
+                        React.createElement('p', { className: "text-slate-500 mb-6 text-sm" }, "هذا الإجراء نهائي ولا يمكن التراجع عنه."),
+                        React.createElement('div', { className: "flex justify-center gap-3" },
+                            React.createElement('button', { onClick: () => setDeleteModal({ show: false, id: null }), className: "px-5 py-2.5 border rounded-xl" }, "تراجع"),
+                            React.createElement('button', { onClick: confirmDelete, className: "px-5 py-2.5 bg-red-600 text-white rounded-xl font-bold" }, "حذف الآن")
+                        )
+                    )
+                ),
+
+                alertInfo.show && React.createElement('div', { className: "fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-[70]" },
+                    React.createElement('div', { className: "bg-white p-6 rounded-3xl shadow-2xl max-w-sm w-full text-center border-t-8 border-amber-500" },
+                        React.createElement('div', { className: "w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-amber-600" }, React.createElement(AlertTriangle, { size: 32 })),
+                        React.createElement('h3', { className: "font-black text-xl mb-2 text-slate-800" }, "عجز في الرصيد"),
+                        React.createElement('p', { className: "text-slate-600 mb-6 text-sm leading-relaxed" }, alertInfo.message),
+                        React.createElement('div', { className: "bg-slate-50 p-4 rounded-xl mb-6 text-right space-y-2 border border-slate-100" },
+                            React.createElement('div', { className: "flex justify-between text-xs" }, React.createElement('span', null, "المتوفر للسحب:"), React.createElement('span', { className: "font-bold text-emerald-600" }, formatNumber(alertInfo.available), " ", appSettings.currency)),
+                            React.createElement('div', { className: "flex justify-between text-xs" }, React.createElement('span', null, "المبلغ المطلوب سحبه:"), React.createElement('span', { className: "font-bold text-red-600" }, formatNumber(alertInfo.requested), " ", appSettings.currency))
+                        ),
+                        React.createElement('button', { onClick: () => setAlertInfo({ ...alertInfo, show: false }), className: "w-full py-3 bg-slate-800 text-white rounded-xl font-bold shadow-lg" }, "فهمت ذلك")
+                    )
+                )
+            );
+        }
+
+        function StatBox({ title, value, color, bg, symbol }) {
+            return React.createElement('div', { className: `${bg} p-4 rounded-2xl border shadow-sm transition-all hover:shadow-md` },
+                React.createElement('p', { className: "text-base font-black text-slate-500 mb-1 text-center" }, title),
+                React.createElement('div', { className: "flex items-baseline justify-center gap-1" },
+                    React.createElement('span', { className: `text-xl font-black ${color}` }, new Intl.NumberFormat('ar-IQ').format(value || 0)),
+                    React.createElement('span', { className: "text-[10px] font-bold text-slate-400" }, symbol)
+                )
+            );
+        }
+
+        const root = createRoot(document.getElementById('app'));
+        root.render(React.createElement(App));
+    </script>
+</body>
+</html>
