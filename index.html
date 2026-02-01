@@ -324,17 +324,19 @@
                 ),
 
                 React.createElement('div', { className: "bg-white rounded-2xl border shadow-sm overflow-hidden" },
-                    React.createElement('div', { className: "p-4 bg-slate-50 border-b flex flex-wrap items-end gap-4" },
-                        React.createElement('div', { className: "flex items-center gap-2 text-slate-500 font-bold text-sm" }, React.createElement(Filter, { size: 16 }), "تصفية:"),
-                        React.createElement('div', null,
-                            React.createElement('label', { className: "block text-xs font-bold text-slate-400 mb-1 text-center" }, "من تاريخ"),
-                            React.createElement('input', { type: "date", value: startDate, onChange: e => setStartDate(e.target.value), className: "p-2 border rounded-lg text-sm outline-none text-center" })
-                        ),
-                        React.createElement('div', null,
-                            React.createElement('label', { className: "block text-xs font-bold text-slate-400 mb-1 text-center" }, "إلى تاريخ"),
-                            React.createElement('input', { type: "date", value: endDate, onChange: e => setEndDate(e.target.value), className: "p-2 border rounded-lg text-sm outline-none text-center" })
-                        ),
-                        (startDate || endDate) && React.createElement('button', { onClick: () => { setStartDate(''); setEndDate(''); }, className: "px-3 py-2 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200" }, "إلغاء")
+                    React.createElement('div', { className: "p-4 bg-slate-50 border-b flex flex-col md:flex-row items-center justify-center gap-4" },
+                        React.createElement('div', { className: "flex items-center gap-2 text-slate-500 font-bold text-sm" }, React.createElement(Filter, { size: 16 }), "تصفية الرحلات:"),
+                        React.createElement('div', { className: "flex flex-col md:flex-row items-center gap-3 w-full md:w-auto" },
+                            React.createElement('div', { className: "w-full md:w-auto" },
+                                React.createElement('label', { className: "block text-xs font-bold text-slate-400 mb-1 text-center" }, "من تاريخ"),
+                                React.createElement('input', { type: "date", value: startDate, onChange: e => setStartDate(e.target.value), className: "w-full p-2 border rounded-xl text-sm outline-none text-center shadow-sm" })
+                            ),
+                            React.createElement('div', { className: "w-full md:w-auto" },
+                                React.createElement('label', { className: "block text-xs font-bold text-slate-400 mb-1 text-center" }, "إلى تاريخ"),
+                                React.createElement('input', { type: "date", value: endDate, onChange: e => setEndDate(e.target.value), className: "w-full p-2 border rounded-xl text-sm outline-none text-center shadow-sm" })
+                            ),
+                            (startDate || endDate) && React.createElement('button', { onClick: () => { setStartDate(''); setEndDate(''); }, className: "w-full md:w-auto px-4 py-2 bg-red-100 text-red-600 rounded-xl text-xs font-black hover:bg-red-200 transition-colors" }, "إلغاء التصفية")
+                        )
                     ),
                     React.createElement('div', { className: "overflow-x-auto" },
                         React.createElement('table', { className: "w-full text-right" },
@@ -508,5 +510,4 @@
         root.render(React.createElement(App));
     </script>
 </body>
-
 </html>
