@@ -80,9 +80,9 @@
             const [appSettings, setAppSettings] = useState(() => {
                 const saved = localStorage.getItem('app_settings');
                 return saved ? JSON.parse(saved) : {
-                    currency: 'د.ع',
-                    username: 'admin',
-                    password: '123',
+                    currency: 'دينار',
+                    username: 'Man',
+                    password: '20001223',
                     app_name: 'نظام إدارة سيارات النقل',
                     sb_url: '',
                     sb_key: ''
@@ -508,4 +508,5 @@
         root.render(React.createElement(App));
     </script>
 </body>
+
 </html>
