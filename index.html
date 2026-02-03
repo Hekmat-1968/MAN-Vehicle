@@ -62,7 +62,7 @@
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
         
         import { 
-            Plus, Trash2, Edit, Settings, X, Lock, Filter, LogOut, Ban, Save, AlertTriangle, Database, CheckCircle2, Wifi, WifiOff, Image as ImageIcon, Upload
+            Plus, Trash2, Edit, Settings, X, Lock, Filter, LogOut, Ban, Save, AlertTriangle, Database, CheckCircle2, Wifi, WifiOff, Image as ImageIcon, Upload, Download, FileJson
         } from 'https://esm.sh/lucide-react@0.300.0';
 
         const getSupabase = (url, key) => {
@@ -76,6 +76,7 @@
             const [isAppLoggedIn, setIsAppLoggedIn] = useState(false);
             const [loginCredentials, setLoginCredentials] = useState({ username: '', password: '' });
             const [loginError, setLoginError] = useState('');
+            const fileInputRef = useRef(null);
             
             const [appSettings, setAppSettings] = useState(() => {
                 const saved = localStorage.getItem('app_settings');
@@ -280,6 +281,45 @@
                 setIsSettingsOpen(false);
             };
 
+            // وظائف تصدير واستيراد البيانات
+            const exportData = () => {
+                const dataStr = JSON.stringify(entries, null, 2);
+                const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(dataBlob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `backup_${new Date().toISOString().split('T')[0]}.json`;
+                link.click();
+                URL.revokeObjectURL(url);
+            };
+
+            const importData = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const json = JSON.parse(e.target.result);
+                        if (Array.isArray(json)) {
+                            if (confirm('سيتم استبدال جميع البيانات الحالية بالبيانات المرفوعة. هل أنت متأكد؟')) {
+                                setEntries(json);
+                                if (supabase) {
+                                    // إذا كان هناك سوبابيز، نقوم بمسح القديم ورفع الجديد (اختياري حسب الرغبة)
+                                    // هنا نكتفي بالتحديث المحلي والسماح للمستخدم بالمزامنة يدوياً أو التحديث لاحقاً
+                                }
+                                setIsSettingsOpen(false);
+                            }
+                        } else {
+                            alert('ملف غير صالح');
+                        }
+                    } catch (err) {
+                        alert('خطأ في قراءة الملف');
+                    }
+                };
+                reader.readAsText(file);
+            };
+
             if (!isAppLoggedIn) {
                 return React.createElement('div', { className: "min-h-screen bg-slate-100 flex items-center justify-center p-4" },
                     React.createElement('div', { className: "bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200" },
@@ -426,6 +466,20 @@
                             React.createElement('button', { onClick: () => setIsSettingsOpen(false), className: "p-2 hover:bg-slate-100 rounded-full" }, React.createElement(X))
                         ),
                         React.createElement('div', { className: "p-6 overflow-y-auto custom-scrollbar flex-1 space-y-5" },
+                            React.createElement('div', { className: "bg-emerald-50 p-4 rounded-2xl border border-emerald-100" },
+                                React.createElement('h3', { className: "text-xs font-black text-emerald-800 mb-3 flex items-center gap-2" }, React.createElement(FileJson, {size: 14}), "النسخ الاحتياطي للبيانات"),
+                                React.createElement('div', { className: "grid grid-cols-2 gap-3" },
+                                    React.createElement('button', { onClick: exportData, className: "flex items-center justify-center gap-2 bg-white border border-emerald-200 p-3 rounded-xl text-emerald-700 font-bold text-xs hover:bg-emerald-100 transition-colors shadow-sm" }, 
+                                        React.createElement(Download, {size: 14}), "تنزيل البيانات"
+                                    ),
+                                    React.createElement('div', { className: "relative" },
+                                        React.createElement('input', { type: "file", accept: ".json", className: "hidden", ref: fileInputRef, onChange: importData }),
+                                        React.createElement('button', { onClick: () => fileInputRef.current.click(), className: "w-full flex items-center justify-center gap-2 bg-emerald-600 text-white p-3 rounded-xl font-bold text-xs hover:bg-emerald-700 transition-colors shadow-sm" }, 
+                                            React.createElement(Upload, {size: 14}), "رفع البيانات"
+                                        )
+                                    )
+                                )
+                            ),
                             React.createElement('div', { className: "bg-blue-50 p-4 rounded-2xl border border-blue-100" },
                                 React.createElement('h3', { className: "text-xs font-black text-blue-800 mb-3 flex items-center gap-2" }, React.createElement(Database, {size: 14}), "بيانات السحابة (Supabase)"),
                                 React.createElement('div', { className: "space-y-3" },
