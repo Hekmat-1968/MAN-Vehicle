@@ -4,14 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>نظام إدارة سيارات النقل</title>
-    
-    <!-- PWA Settings -->
-    <meta name="theme-color" content="#be185d">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2555/2555059.png">
-
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -52,6 +44,14 @@
             color: white !important;
         }
     </style>
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#be185d">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
 </head>
 <body class="min-h-screen text-slate-800">
 
@@ -60,17 +60,6 @@
     </div>
 
     <div id="app"></div>
-
-    <!-- Service Worker Registration -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('SW Registered'))
-                    .catch(err => console.log('SW Failed', err));
-            });
-        }
-    </script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -81,7 +70,7 @@
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
         
         import { 
-            Plus, Trash2, Edit, Settings, X, Lock, Filter, LogOut, Ban, Save, AlertTriangle, Database, CheckCircle2, Wifi, WifiOff, Image as ImageIcon, Upload, Download, FileJson, Loader2
+            Plus, Trash2, Edit, Settings, X, Lock, Filter, LogOut, Ban, Save, AlertTriangle, Database, CheckCircle2, Wifi, WifiOff, Image as ImageIcon, Upload, Download, FileJson
         } from 'https://esm.sh/lucide-react@0.300.0';
 
         const getSupabase = (url, key) => {
@@ -95,7 +84,6 @@
             const [isAppLoggedIn, setIsAppLoggedIn] = useState(false);
             const [loginCredentials, setLoginCredentials] = useState({ username: '', password: '' });
             const [loginError, setLoginError] = useState('');
-            const [isLoading, setIsLoading] = useState(true);
             const fileInputRef = useRef(null);
             
             const [appSettings, setAppSettings] = useState(() => {
@@ -136,11 +124,6 @@
                 driver_exp: 0, fuel_exp: 0, other_exp: 0, withdrawal: 0,
                 is_received: false
             });
-
-            useEffect(() => {
-                // محاكاة تحميل بسيط لضمان استقرار الواجهة
-                setTimeout(() => setIsLoading(false), 800);
-            }, []);
 
             useEffect(() => {
                 const client = getSupabase(appSettings.sb_url, appSettings.sb_key);
@@ -184,7 +167,7 @@
                     if (startDate && entry.date < startDate) return false;
                     if (endDate && entry.date > endDate) return false;
                     return true;
-                }).sort((a, b) => new Date(b.date) - new Date(a.date));
+                });
             }, [entries, startDate, endDate]);
 
             const stats = useMemo(() => {
@@ -247,9 +230,9 @@
                 if (currentWithdrawal > 0 && currentWithdrawal > finalAvailable) {
                     setAlertInfo({ 
                         show: true, 
-                        message: 'عجز في الصندوق: مبلغ السحب يتجاوز المتوفر حالياً.', 
-                        available: finalAvailable, 
-                        requested: currentWithdrawal 
+                        message: 'لا يمكن إتمام العملية. مبلغ السحب أكبر من الرصيد المتوفر في الصندوق.',
+                        available: finalAvailable,
+                        requested: currentWithdrawal
                     });
                     return;
                 }
@@ -329,6 +312,10 @@
                         if (Array.isArray(json)) {
                             if (confirm('سيتم استبدال جميع البيانات الحالية بالبيانات المرفوعة. هل أنت متأكد؟')) {
                                 setEntries(json);
+                                if (supabase) {
+                                    // إذا كان هناك سوبابيز، نقوم بمسح القديم ورفع الجديد (اختياري حسب الرغبة)
+                                    // هنا نكتفي بالتحديث المحلي والسماح للمستخدم بالمزامنة يدوياً أو التحديث لاحقاً
+                                }
                                 setIsSettingsOpen(false);
                             }
                         } else {
@@ -341,15 +328,9 @@
                 reader.readAsText(file);
             };
 
-            if (isLoading) {
-                return React.createElement('div', { className: "loading-overlay" }, 
-                    React.createElement(Loader2, { className: "w-12 h-12 text-pink-700 animate-spin" })
-                );
-            }
-
             if (!isAppLoggedIn) {
                 return React.createElement('div', { className: "min-h-screen bg-slate-100 flex items-center justify-center p-4" },
-                    React.createElement('div', { className: "bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-slate-200" },
+                    React.createElement('div', { className: "bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200" },
                         React.createElement('div', { className: "text-center mb-8" },
                             React.createElement('div', { className: "w-16 h-16 bg-pink-700 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-lg" }, React.createElement(Lock, { className: "w-8 h-8" })),
                             React.createElement('h1', { className: "text-2xl font-black text-slate-800" }, appSettings.app_name)
@@ -590,5 +571,14 @@
         const root = createRoot(document.getElementById('app'));
         root.render(React.createElement(App));
     </script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js');
+  });
+}
+</script>
+
 </body>
 </html>
