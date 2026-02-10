@@ -4,14 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>نظام إدارة سيارات النقل</title>
-    
-    <!-- PWA Settings -->
-    <meta name="theme-color" content="#be185d">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.json">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2555/2555059.png">
-
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
@@ -52,6 +44,14 @@
             color: white !important;
         }
     </style>
+
+    <!-- PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#be185d">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
 </head>
 <body class="min-h-screen text-slate-800">
 
@@ -60,17 +60,6 @@
     </div>
 
     <div id="app"></div>
-
-    <!-- Service Worker Registration -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('SW Registered'))
-                    .catch(err => console.log('SW Failed', err));
-            });
-        }
-    </script>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -81,7 +70,7 @@
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
         
         import { 
-            Plus, Trash2, Edit, Settings, X, Lock, Filter, LogOut, Ban, Save, AlertTriangle, Database, CheckCircle2, Wifi, WifiOff, Image as ImageIcon, Upload, Download, FileJson, Loader2
+            Plus, Trash2, Edit, Settings, X, Lock, Filter, LogOut, Ban, Save, AlertTriangle, Database, CheckCircle2, Wifi, WifiOff, Image as ImageIcon, Upload, Download, FileJson
         } from 'https://esm.sh/lucide-react@0.300.0';
 
         const getSupabase = (url, key) => {
@@ -95,7 +84,6 @@
             const [isAppLoggedIn, setIsAppLoggedIn] = useState(false);
             const [loginCredentials, setLoginCredentials] = useState({ username: '', password: '' });
             const [loginError, setLoginError] = useState('');
-            const [isLoading, setIsLoading] = useState(true);
             const fileInputRef = useRef(null);
             
             const [appSettings, setAppSettings] = useState(() => {
@@ -138,11 +126,6 @@
             });
 
             useEffect(() => {
-                // محاكاة تحميل بسيط لضمان استقرار الواجهة
-                setTimeout(() => setIsLoading(false), 800);
-            }, []);
-
-            useEffect(() => {
                 const client = getSupabase(appSettings.sb_url, appSettings.sb_key);
                 setSupabase(client);
                 if (client) {
@@ -177,6 +160,13 @@
                 }
             };
 
+            // دالة تسجيل الخروج الجديدة لمسح البيانات
+            const handleLogout = () => {
+                setIsAppLoggedIn(false);
+                setLoginCredentials({ username: '', password: '' }); // مسح الحقول
+                setLoginError('');
+            };
+
             const formatNumber = (n) => new Intl.NumberFormat('ar-IQ').format(n || 0);
 
             const filteredEntries = useMemo(() => {
@@ -184,7 +174,7 @@
                     if (startDate && entry.date < startDate) return false;
                     if (endDate && entry.date > endDate) return false;
                     return true;
-                }).sort((a, b) => new Date(b.date) - new Date(a.date));
+                });
             }, [entries, startDate, endDate]);
 
             const stats = useMemo(() => {
@@ -247,9 +237,9 @@
                 if (currentWithdrawal > 0 && currentWithdrawal > finalAvailable) {
                     setAlertInfo({ 
                         show: true, 
-                        message: 'عجز في الصندوق: مبلغ السحب يتجاوز المتوفر حالياً.', 
-                        available: finalAvailable, 
-                        requested: currentWithdrawal 
+                        message: 'لا يمكن إتمام العملية. مبلغ السحب أكبر من الرصيد المتوفر في الصندوق.',
+                        available: finalAvailable,
+                        requested: currentWithdrawal
                     });
                     return;
                 }
@@ -306,7 +296,6 @@
                 setIsSettingsOpen(false);
             };
 
-            // وظائف تصدير واستيراد البيانات
             const exportData = () => {
                 const dataStr = JSON.stringify(entries, null, 2);
                 const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -341,22 +330,16 @@
                 reader.readAsText(file);
             };
 
-            if (isLoading) {
-                return React.createElement('div', { className: "loading-overlay" }, 
-                    React.createElement(Loader2, { className: "w-12 h-12 text-pink-700 animate-spin" })
-                );
-            }
-
             if (!isAppLoggedIn) {
                 return React.createElement('div', { className: "min-h-screen bg-slate-100 flex items-center justify-center p-4" },
-                    React.createElement('div', { className: "bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-slate-200" },
+                    React.createElement('div', { className: "bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200" },
                         React.createElement('div', { className: "text-center mb-8" },
                             React.createElement('div', { className: "w-16 h-16 bg-pink-700 rounded-full flex items-center justify-center mx-auto mb-4 text-white shadow-lg" }, React.createElement(Lock, { className: "w-8 h-8" })),
                             React.createElement('h1', { className: "text-2xl font-black text-slate-800" }, appSettings.app_name)
                         ),
                         React.createElement('form', { className: "space-y-4", onSubmit: handleLogin },
-                            React.createElement('input', { type: "text", placeholder: "اسم المستخدم", className: "w-full p-4 border rounded-xl outline-none focus:ring-2 focus:ring-pink-500 text-center", onChange: e => setLoginCredentials({...loginCredentials, username: e.target.value}) }),
-                            React.createElement('input', { type: "password", placeholder: "كلمة المرور", className: "w-full p-4 border rounded-xl outline-none focus:ring-2 focus:ring-pink-500 text-center", onChange: e => setLoginCredentials({...loginCredentials, password: e.target.value}) }),
+                            React.createElement('input', { type: "text", placeholder: "اسم المستخدم", value: loginCredentials.username, className: "w-full p-4 border rounded-xl outline-none focus:ring-2 focus:ring-pink-500 text-center", onChange: e => setLoginCredentials({...loginCredentials, username: e.target.value}) }),
+                            React.createElement('input', { type: "password", placeholder: "كلمة المرور", value: loginCredentials.password, className: "w-full p-4 border rounded-xl outline-none focus:ring-2 focus:ring-pink-500 text-center", onChange: e => setLoginCredentials({...loginCredentials, password: e.target.value}) }),
                             loginError && React.createElement('p', { className: "text-red-500 text-sm font-bold text-center" }, loginError),
                             React.createElement('button', { className: "w-full bg-pink-700 text-white py-4 rounded-xl font-black text-lg hover:bg-pink-800 transition-all shadow-md" }, "دخول النظام")
                         )
@@ -379,7 +362,7 @@
                     React.createElement('div', { className: "flex gap-2" },
                         React.createElement('button', { onClick: () => { setFormData({ date: new Date().toISOString().split('T')[0], trip_from: '', trip_to: '', income: 0, driver_exp: 0, fuel_exp: 0, other_exp: 0, withdrawal: 0, is_received: false }); setEditingId(null); setIsModalOpen(true); }, className: "bg-pink-700 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 shadow-md hover:bg-pink-800 transition-all" }, React.createElement(Plus, { size: 18 }), "إضافة رحلة"),
                         React.createElement('button', { onClick: () => { setTempSettings(appSettings); setIsSettingsOpen(true); }, className: "p-2 bg-slate-100 rounded-xl hover:bg-slate-200" }, React.createElement(Settings, { size: 20 })),
-                        React.createElement('button', { onClick: () => setIsAppLoggedIn(false), className: "p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100" }, React.createElement(LogOut, { size: 20 }))
+                        React.createElement('button', { onClick: handleLogout, className: "p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100" }, React.createElement(LogOut, { size: 20 }))
                     )
                 ),
 
@@ -590,5 +573,15 @@
         const root = createRoot(document.getElementById('app'));
         root.render(React.createElement(App));
     </script>
+
+    <script>
+        // تم إضافة تحقق من البروتوكول لمنع ظهور خطأ (URL protocol is not supported) في بيئة المعاينة
+        if ('serviceWorker' in navigator && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
+          window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js').catch(err => console.log('SW failed:', err));
+          });
+        }
+    </script>
+
 </body>
 </html>
