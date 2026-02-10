@@ -1,6 +1,6 @@
 {
   "name": "نظام إدارة سيارات النقل",
-  "short_name": "نظام النقل",
+  "short_name": "إدارة النقل",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f8fafc",
@@ -18,3 +18,4 @@
     }
   ]
 }
+
